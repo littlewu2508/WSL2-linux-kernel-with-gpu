@@ -811,7 +811,14 @@ struct vmbus_channel {
 	 * delivered on CPU 0. Setting this value to 0 would preserve
 	 * the earlier behavior.
 	 */
+	u32 target_vp;
+	/* The corresponding CPUID in the guest */
 	u32 target_cpu;
+	/*
+	 * State to manage the CPU affiliation of channels.
+	 */
+	struct cpumask alloced_cpus_in_node;
+	int numa_node;
 	/*
 	 * Support for sub-channels. For high performance devices,
 	 * it will be useful to have multiple sub-channels to support
@@ -841,6 +848,12 @@ struct vmbus_channel {
 	void (*chn_rescind_callback)(struct vmbus_channel *channel);
 
 	/*
+	 * The spinlock to protect the structure. It is being used to protect
+	 * test-and-set access to various attributes of the structure as well
+	 * as all sc_list operations.
+	 */
+	spinlock_t lock;
+	/*
 	 * All Sub-channels of a primary channel are linked here.
 	 */
 	struct list_head sc_list;
@@ -853,6 +866,11 @@ struct vmbus_channel {
 	 * Support per-channel state for use by vmbus drivers.
 	 */
 	void *per_channel_state;
+	/*
+	 * To support per-cpu lookup mapping of relid to channel,
+	 * link up channels based on their CPU affinity.
+	 */
+	struct list_head percpu_list;
 
 	/*
 	 * Defer freeing channel until after all cpu's have
@@ -1334,6 +1352,22 @@ void vmbus_free_mmio(resource_size_t start, resource_size_t size);
 #define HV_SYNTHVID_GUID \
 	.guid = GUID_INIT(0xda0a7802, 0xe377, 0x4aac, 0x8e, 0x77, \
 			  0x05, 0x58, 0xeb, 0x10, 0x73, 0xf8)
+
+/*
+ * GPU paravirtualization global DXGK channel
+ * {DDE9CBC0-5060-4436-9448-EA1254A5D177}
+ */
+#define HV_GPUP_DXGK_GLOBAL_GUID \
+	.guid = GUID_INIT(0xdde9cbc0, 0x5060, 0x4436, 0x94, 0x48, \
+			  0xea, 0x12, 0x54, 0xa5, 0xd1, 0x77)
+
+/*
+ * GPU paravirtualization per virtual GPU DXGK channel
+ * {6E382D18-3336-4F4B-ACC4-2B7703D4DF4A}
+ */
+#define HV_GPUP_DXGK_VGPU_GUID \
+	.guid = GUID_INIT(0x6e382d18, 0x3336, 0x4f4b, 0xac, 0xc4, \
+			  0x2b, 0x77, 0x3, 0xd4, 0xdf, 0x4a)
 
 /*
  * Synthetic FC GUID
